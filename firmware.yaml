@@ -19,7 +19,7 @@ ota:
     password: !secret ota_flash_pass
 
 wifi:
-  ssid: "DrayTek2"
+  ssid: !secret wifi_ssid
   password: !secret wifi_pw
   ap:
     ssid: "ESPhome Fallback Hotspot"
