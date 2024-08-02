@@ -1,0 +1,78 @@
+esphome:
+  name: workshop
+  comment: Temp Humidity Sensor
+  area: Workshop
+
+esp32:
+  board: esp32doit-devkit-v1
+  framework:
+    type: arduino
+
+logger:
+
+api:
+  encryption:
+    key: !secret ha_api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_flash_pass
+
+wifi:
+  ssid: "DrayTek2"
+  password: !secret wifi_pw
+  ap:
+    ssid: "ESPhome Fallback Hotspot"
+    password: !secret wifi_fallback_pw
+
+captive_portal:
+
+i2c:
+  frequency: 400kHz
+
+sensor:
+  - platform: sht4x
+    temperature:
+      name: "Temperature"
+      id: "sht_temp"
+    humidity:
+      name: "Humidity"
+      id: "sht_humidity"
+      on_value_range:
+        - above: 65.0
+          then:
+            - delay: 10s
+            - switch.turn_on: relay_status
+        - below: 65.0
+          then:
+            - delay: 10s
+            - switch.turn_off: relay_status
+    update_interval: 60s
+
+  - platform: homeassistant
+    name: "Humidity Threshold - Upper"
+    entity_id: input_number.sht45_humidity_threshold
+    id: sht45_humidity_threshold
+
+switch:
+  - platform: gpio
+    pin: 
+      number: GPIO18
+    name: "12v Relay Status"
+    id: relay_status
+    device_class: switch
+    restore_mode: RESTORE_DEFAULT_OFF
+
+display:
+  - platform: lcd_pcf8574
+    dimensions: 16x2
+    address: 0x27
+    lambda: |-
+      it.printf(0, 0, "Temp: %.2f C", id(sht_temp).state);
+      it.printf(0, 1, "Humi: %.1f  %%", id(sht_humidity).state);
+
+globals:
+  - id: humidity_upper_threshold
+    type: float
+    restore_value: true
+    initial_value: '65'
