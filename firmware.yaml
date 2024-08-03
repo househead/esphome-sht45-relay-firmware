@@ -2,6 +2,11 @@ esphome:
   name: workshop
   comment: Temp Humidity Sensor
   area: Workshop
+  on_boot:
+    - logger.log:
+        level: DEBUG
+        format: 'Humidity threshold is set to %d'
+        args: ['id(humidity_threshold)']
 
 esp32:
   board: esp32doit-devkit-v1
@@ -38,21 +43,41 @@ sensor:
     humidity:
       name: "Humidity"
       id: "sht_humidity"
-      on_value_range:
-        - above: 65.0
-          then:
-            - delay: 10s
-            - switch.turn_on: relay_status
-        - below: 65.0
-          then:
-            - delay: 10s
-            - switch.turn_off: relay_status
+      on_value:
+        then:
+          - if:
+              condition:
+                lambda: 'return int(id(sht_humidity).state) > id(humidity_threshold);'
+              then:
+                - logger.log: 
+                    format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
+                    args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+                - switch.turn_on: relay_status
+                - delay: 30s
+              else:
+                - logger.log:
+                    format: 'The humidity (%d) is under the threshold (%d). Switching dehumidifier off.'
+                    args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+                - switch.turn_off: relay_status
     update_interval: 60s
 
   - platform: homeassistant
     name: "Humidity Threshold - Upper"
     entity_id: input_number.sht45_humidity_threshold
     id: sht45_humidity_threshold
+    on_value:
+      then:
+        if:
+          condition: 
+            lambda: 'return id(humidity_threshold) != int(x);'
+          then:
+            - logger.log:
+                level: DEBUG
+                format: Humidity threshold changed from %d to %d'
+                args: ['id(humidity_threshold)', 'int(x)']
+            - globals.set:
+                id: humidity_threshold
+                value: !lambda 'return int(x);'
 
 switch:
   - platform: gpio
@@ -72,7 +97,7 @@ display:
       it.printf(0, 1, "Humi: %.1f  %%", id(sht_humidity).state);
 
 globals:
-  - id: humidity_upper_threshold
-    type: float
+  - id: humidity_threshold
+    type: int
     restore_value: true
     initial_value: '65'
