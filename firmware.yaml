@@ -1,7 +1,19 @@
+substitutions:
+  board_type: "esp32doit-devkit-v1"
+  board_framework: "arduino"
+  device_name: "workshop"
+  device_desc: "Temp Humidity Sensor"
+  device_area: "Workshop"
+  humidity_threshold_initial: "65"
+  humidity_target_initial: "60"
+  max_daily_stepdown_initial: "0.5"
+  display_address: "0x27"
+  display_dimensions: "16x2"
+
 esphome:
-  name: workshop
+  name: $device_name
   comment: Temp Humidity Sensor
-  area: Workshop
+  area: $device_area
   on_boot:
     - logger.log:
         level: DEBUG
@@ -21,9 +33,9 @@ esphome:
         args: ['id(dry_prog_active)']
 
 esp32:
-  board: esp32doit-devkit-v1
+  board: $board_type
   framework:
-    type: arduino
+    type: $board_framework
 
 logger:
 
@@ -39,7 +51,7 @@ wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_pw
   ap:
-    ssid: "ESPhome Fallback Hotspot"
+    ssid: ESPhome Fallback Hotspot
     password: !secret wifi_fallback_pw
 
 captive_portal:
@@ -150,8 +162,8 @@ switch:
 
 display:
   - platform: lcd_pcf8574
-    dimensions: 16x2
-    address: 0x27
+    dimensions: $display_dimensions
+    address: $display_address
     lambda: |-
       it.printf(0, 0, "T: %2.1fC", id(sht_temp).state);
       it.printf(0, 1, "H: %2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
@@ -168,15 +180,15 @@ globals:
   - id: humidity_threshold
     type: int
     restore_value: true
-    initial_value: '65'
+    initial_value: $humidity_threshold_initial
   - id: humidity_target
     type: int
     restore_value: true
-    initial_value: '60'
+    initial_value: $humidity_target_initial
   - id: max_daily_stepdown
     type: float
     restore_value: true
-    initial_value: '0.5'
+    initial_value: $max_daily_stepdown_initial
   - id: dry_prog_active
     type: bool
     restore_value: true
