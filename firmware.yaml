@@ -59,6 +59,30 @@ captive_portal:
 i2c:
   frequency: 400kHz
 
+output:
+  - platform: ledc
+    pin: GPIO04
+    id: fan_control
+    frequency: 25000 Hz
+
+fan:
+  - platform: speed
+    output: fan_control
+    name: "Dehumidifier Fan"
+    id: dehumid_fan
+    on_turn_on:
+    - switch.turn_on: dehumid_relay
+    on_turn_off:
+    - switch.turn_off: dehumid_relay
+
+display:
+  - platform: lcd_pcf8574
+    dimensions: $display_dimensions
+    address: $display_address
+    lambda: |-
+      it.printf(0, 0, "T: %2.1fC", id(sht_temp).state);
+      it.printf(0, 1, "H: %2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
+
 sensor:
   - platform: sht4x
     temperature:
@@ -76,13 +100,13 @@ sensor:
                 - logger.log: 
                     format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
                     args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
-                - switch.turn_on: relay_status
+                - switch.turn_on: dehumid_relay
                 - delay: 30s
               else:
                 - logger.log:
                     format: 'The humidity (%d) is under the threshold (%d). Switching dehumidifier off.'
                     args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
-                - switch.turn_off: relay_status
+                - switch.turn_off: dehumid_relay
     update_interval: 60s
 
   - platform: homeassistant
@@ -151,22 +175,28 @@ sensor:
                 id: max_daily_stepdown
                 value: !lambda 'return float(x);'
 
+  - platform: pulse_counter
+    pin:
+      number: GPIO23
+    name: Dehumidifier Fan Speed (RPM)
+    id: fan_pulse
+    unit_of_measurement: 'RPM'
+    filters:
+      - multiply: 0.5
+    count_mode:
+      rising_edge: INCREMENT
+      falling_edge: DISABLE
+    update_interval: 30s
+
 switch:
   - platform: gpio
     pin: 
       number: GPIO18
-    name: "12v Relay Status"
-    id: relay_status
+    name: "Dehumid Relay"
+    id: dehumid_relay
     device_class: switch
+    internal: true
     restore_mode: RESTORE_DEFAULT_OFF
-
-display:
-  - platform: lcd_pcf8574
-    dimensions: $display_dimensions
-    address: $display_address
-    lambda: |-
-      it.printf(0, 0, "T: %2.1fC", id(sht_temp).state);
-      it.printf(0, 1, "H: %2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
 
 time:
   - platform: homeassistant
