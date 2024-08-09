@@ -86,6 +86,14 @@ display:
       it.printf(0, 0, "T:%2.1fC", id(sht_temp).state);
       it.printf(0, 1, "H:%2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
 
+time:
+  - platform: homeassistant
+    id: homeassistant_time
+
+web_server:
+  port: 80
+  version: 3
+
 sensor:
 
   - platform: wifi_signal
@@ -230,22 +238,6 @@ script:
               format: 'The humidity (%d) is under the threshold (%d) or the setpoint is not activated. Switching dehumidifier off.'
               args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
           - switch.turn_off: dehumid_relay
-
-display:
-  - platform: lcd_pcf8574
-    dimensions: $display_dimensions
-    address: $display_address
-    lambda: |-
-      it.printf(0, 0, "T: %2.1fC", id(sht_temp).state);
-      it.printf(0, 1, "H: %2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
-
-time:
-  - platform: homeassistant
-    id: homeassistant_time
-
-web_server:
-  port: 80
-  version: 3
 
 globals:
   - id: humidity_threshold
