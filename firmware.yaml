@@ -59,7 +59,39 @@ captive_portal:
 i2c:
   frequency: 400kHz
 
+output:
+  - platform: ledc
+    pin: GPIO04
+    id: fan_control
+    frequency: 25000 Hz
+    min_power: 0%
+    max_power: 100%
+
+fan:
+  - platform: speed
+    output: fan_control
+    name: "Dehumidifier"
+    id: dehumid_fan
+    restore_mode: ALWAYS_OFF
+    on_turn_on:
+    - switch.turn_on: dehumid_relay
+    on_turn_off:
+    - switch.turn_off: dehumid_relay
+
+display:
+  - platform: lcd_pcf8574
+    dimensions: $display_dimensions
+    address: $display_address
+    lambda: |-
+      it.printf(0, 0, "T:%2.1fC", id(sht_temp).state);
+      it.printf(0, 1, "H:%2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
+
 sensor:
+
+  - platform: wifi_signal
+    name: WiFi Strength
+    update_interval: 60s
+
   - platform: sht4x
     temperature:
       name: "Temperature"
@@ -69,20 +101,7 @@ sensor:
       id: "sht_humidity"
       on_value:
         then:
-          - if:
-              condition:
-                lambda: 'return int(id(sht_humidity).state) > id(humidity_threshold);'
-              then:
-                - logger.log: 
-                    format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
-                    args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
-                - switch.turn_on: relay_status
-                - delay: 30s
-              else:
-                - logger.log:
-                    format: 'The humidity (%d) is under the threshold (%d). Switching dehumidifier off.'
-                    args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
-                - switch.turn_off: relay_status
+          - script.execute: dehumidifier_action
     update_interval: 60s
 
   - platform: homeassistant
@@ -151,14 +170,66 @@ sensor:
                 id: max_daily_stepdown
                 value: !lambda 'return float(x);'
 
+  - platform: homeassistant
+    name: "Set point Active"
+    entity_id: input_boolean.sht45_setpoint_active
+    id: sht45_setpoint_active
+    internal: true
+    on_value:
+      then:
+        if:
+          condition: 
+            lambda: 'return int(id(setpoint_active)) != int(bool(x));'
+          then:
+            - logger.log:
+                level: DEBUG
+                format: 'Set point activity changed from %d to %d'
+                args: ['int(id(setpoint_active))', 'int(bool(x))']
+            - globals.set:
+                id: setpoint_active
+                value: !lambda 'return bool(x);'
+
+binary_sensor:
+  - platform: template
+    name: "Humidity Setpoint Status"
+    id: setpoint_active_sensor
+    lambda: |-
+      if (id(setpoint_active)) {
+        return true;
+      } else {
+        return false;
+      }
+
 switch:
   - platform: gpio
     pin: 
       number: GPIO18
-    name: "12v Relay Status"
-    id: relay_status
+    name: "Dehumidifier Relay"
+    id: dehumid_relay
     device_class: switch
     restore_mode: RESTORE_DEFAULT_OFF
+    on_turn_on:
+    - fan.turn_on: dehumid_fan
+    on_turn_off:
+    - fan.turn_off: dehumid_fan
+
+script:
+  id: dehumidifier_action
+  then:
+    - if:
+        condition:
+          lambda: 'return (int(id(sht_humidity).state) > id(humidity_threshold)) && (id(setpoint_active));'
+        then:
+          - logger.log: 
+              format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
+              args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+          - switch.turn_on: dehumid_relay
+          - delay: 30s
+        else:
+          - logger.log:
+              format: 'The humidity (%d) is under the threshold (%d) or the setpoint is not activated. Switching dehumidifier off.'
+              args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+          - switch.turn_off: dehumid_relay
 
 display:
   - platform: lcd_pcf8574
@@ -197,6 +268,10 @@ globals:
     type: time_t
     restore_value: true
     initial_value: ""
+  - id: setpoint_active
+    type: bool
+    restore_value: true
+    initial_value: "false"
   - id: dehumid_suspend
     type: bool
     restore_value: true
