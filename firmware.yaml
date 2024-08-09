@@ -229,6 +229,7 @@ switch:
     id: dehumid_relay
     device_class: switch
     restore_mode: RESTORE_DEFAULT_OFF
+    internal: true
     on_turn_on:
     - fan.turn_on: dehumid_fan
     on_turn_off:
@@ -239,7 +240,7 @@ script:
   then:
     - if:
         condition:
-          lambda: 'return (int(id(sht_humidity).state) > id(humidity_threshold)) && (id(setpoint_active));'
+          lambda: 'return (int(id(sht_humidity).state) > id(humidity_threshold) && id(setpoint_active));'
         then:
           - logger.log: 
               format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
