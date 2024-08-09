@@ -197,6 +197,19 @@ sensor:
                 id: setpoint_active
                 value: !lambda 'return bool(x);'
 
+  - platform: pulse_counter
+    pin:
+      number: GPIO23
+    name: Dehumidifier Fan Speed (RPM)
+    id: fan_pulse
+    unit_of_measurement: 'RPM'
+    filters:
+      - multiply: 0.5
+    count_mode:
+      rising_edge: INCREMENT
+      falling_edge: DISABLE
+    update_interval: 30s
+
 binary_sensor:
   - platform: template
     name: "Humidity Setpoint Status"
