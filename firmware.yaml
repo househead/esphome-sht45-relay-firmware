@@ -15,6 +15,7 @@ esphome:
   comment: Temp Humidity Sensor
   area: $device_area
   on_boot:
+    - ds1307.read_time
     - logger.log:
         level: DEBUG
         format: 'Humidity threshold is set to %d'
@@ -87,8 +88,13 @@ display:
       it.printf(0, 1, "H:%2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
 
 time:
+  - platform: ds1307
+    id: ds1307_time
+    update_interval: never
   - platform: homeassistant
-    id: homeassistant_time
+    on_time_sync:
+      then:
+        ds1307.write_time:
 
 web_server:
   port: 80
