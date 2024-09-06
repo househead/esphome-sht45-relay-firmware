@@ -4,7 +4,6 @@ substitutions:
   device_name: "workshop"
   device_desc: "Temp Humidity Sensor"
   device_area: "Workshop"
-  humidity_threshold_initial: "65"
   humidity_target_initial: "60"
   max_daily_stepdown_initial: "0.5"
   display_address: "0x27"
@@ -13,13 +12,10 @@ substitutions:
 esphome:
   name: $device_name
   comment: Temp Humidity Sensor
+  friendly_name: $device_name
   area: $device_area
   on_boot:
     - ds1307.read_time
-    - logger.log:
-        level: DEBUG
-        format: 'Humidity threshold is set to %d'
-        args: ['id(humidity_threshold)']
     - logger.log:
         level: DEBUG
         format: 'Humidity target is set to %d'
@@ -79,14 +75,6 @@ fan:
     on_turn_off:
     - switch.turn_off: dehumid_relay
 
-display:
-  - platform: lcd_pcf8574
-    dimensions: $display_dimensions
-    address: $display_address
-    lambda: |-
-      it.printf(0, 0, "T:%2.1fC", id(sht_temp).state);
-      it.printf(0, 1, "H:%2.1f%% > %2.1f%%", id(sht_humidity).state, id(sht45_humidity_target).state);
-
 time:
   - platform: ds1307
     id: ds1307_time
@@ -119,34 +107,12 @@ sensor:
     update_interval: 60s
 
   - platform: homeassistant
-    name: "Humidity Threshold - Upper"
-    entity_id: input_number.sht45_humidity_threshold
-    id: sht45_humidity_threshold
-    unit_of_measurement: "%"
-    device_class: "humidity"
-    internal: false
-    accuracy_decimals: 1
-    on_value:
-      then:
-        if:
-          condition: 
-            lambda: 'return id(humidity_threshold) != int(x);'
-          then:
-            - logger.log:
-                level: DEBUG
-                format: 'Humidity threshold changed from %d to %d'
-                args: ['id(humidity_threshold)', 'int(x)']
-            - globals.set:
-                id: humidity_threshold
-                value: !lambda 'return int(x);'
-
-  - platform: homeassistant
     name: "Humidity Target"
     entity_id: input_number.sht45_humidity_target
     id: sht45_humidity_target
     unit_of_measurement: "%"
     device_class: "humidity"
-    internal: false
+    internal: true
     accuracy_decimals: 1
     on_value:
       then:
@@ -161,6 +127,7 @@ sensor:
             - globals.set:
                 id: humidity_target
                 value: !lambda 'return int(x);'
+            - script.execute: dehumidifier_action
 
   - platform: homeassistant
     name: "Max Daily Step-Down (Humidity)"
@@ -184,25 +151,6 @@ sensor:
                 id: max_daily_stepdown
                 value: !lambda 'return float(x);'
 
-  - platform: homeassistant
-    name: "Set point Active"
-    entity_id: input_boolean.sht45_setpoint_active
-    id: sht45_setpoint_active
-    internal: true
-    on_value:
-      then:
-        if:
-          condition: 
-            lambda: 'return int(id(setpoint_active)) != int(bool(x));'
-          then:
-            - logger.log:
-                level: DEBUG
-                format: 'Set point activity changed from %d to %d'
-                args: ['int(id(setpoint_active))', 'int(bool(x))']
-            - globals.set:
-                id: setpoint_active
-                value: !lambda 'return bool(x);'
-
   - platform: pulse_counter
     pin:
       number: GPIO23
@@ -216,17 +164,6 @@ sensor:
       falling_edge: DISABLE
     update_interval: 30s
 
-binary_sensor:
-  - platform: template
-    name: "Humidity Setpoint Status"
-    id: setpoint_active_sensor
-    lambda: |-
-      if (id(setpoint_active)) {
-        return true;
-      } else {
-        return false;
-      }
-
 switch:
   - platform: gpio
     pin: 
@@ -237,33 +174,57 @@ switch:
     restore_mode: RESTORE_DEFAULT_OFF
     internal: true
     on_turn_on:
-    - fan.turn_on: dehumid_fan
+      - fan.turn_on: dehumid_fan
     on_turn_off:
-    - fan.turn_off: dehumid_fan
+      - fan.turn_off: dehumid_fan
+
+  - platform: template
+    name: "Humidity Target Status"
+    id: setpoint_switch
+    device_class: switch
+    restore_mode: RESTORE_DEFAULT_OFF
+    lambda: |-
+      if (id(setpoint_active)) {
+        return true;
+      } else {
+        return false;
+      }
+    turn_on_action:
+      - logger.log:
+          level: DEBUG
+          format: 'Set point active status ON'
+      - globals.set:
+          id: setpoint_active
+          value: "true"
+      - script.execute: dehumidifier_action
+    turn_off_action:
+      - logger.log:
+            level: DEBUG
+            format: 'Set point active status OFF'
+      - globals.set:
+          id: setpoint_active
+          value: "false"
+      - script.execute: dehumidifier_action
 
 script:
   id: dehumidifier_action
   then:
     - if:
         condition:
-          lambda: 'return (int(id(sht_humidity).state) > id(humidity_threshold) && id(setpoint_active));'
+          lambda: 'return (int(id(sht_humidity).state) > id(humidity_target) && id(setpoint_active));'
         then:
           - logger.log: 
-              format: 'The humidity (%d) is over the threshold (%d). Switching dehumidifier on.'
-              args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+              format: 'The humidity (%d) is above the target humidity (%d). Switching dehumidifier on.'
+              args: ['int(id(sht_humidity).state)', 'id(humidity_target)']
           - switch.turn_on: dehumid_relay
           - delay: 30s
         else:
           - logger.log:
-              format: 'The humidity (%d) is under the threshold (%d) or the setpoint is not activated. Switching dehumidifier off.'
-              args: ['int(id(sht_humidity).state)', 'id(humidity_threshold)']
+              format: 'The humidity (%d) is under the target (%d) or the humidity target is not activated. Switching dehumidifier off.'
+              args: ['int(id(sht_humidity).state)', 'id(humidity_target)']
           - switch.turn_off: dehumid_relay
 
 globals:
-  - id: humidity_threshold
-    type: int
-    restore_value: true
-    initial_value: $humidity_threshold_initial
   - id: humidity_target
     type: int
     restore_value: true
